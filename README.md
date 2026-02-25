@@ -1,6 +1,17 @@
+<div align="center">
+
 # tmux-shot
 
-Render terminal text to beautiful PNG screenshots with full ANSI color support. Built for tmux users who need to share long terminal output as a single image.
+Render terminal text to beautiful PNG screenshots with full ANSI color support.
+Built for tmux users who need to share long terminal output as a single image.
+
+**English** | [简体中文](./README_zh.md)
+
+[![PyPI version](https://img.shields.io/pypi/v/tmux-shot)](https://pypi.org/project/tmux-shot/)
+[![Python versions](https://img.shields.io/pypi/pyversions/tmux-shot)](https://pypi.org/project/tmux-shot/)
+[![License](https://img.shields.io/github/license/Async23/tmux-shot)](https://github.com/Async23/tmux-shot/blob/main/LICENSE)
+
+</div>
 
 ## Features
 

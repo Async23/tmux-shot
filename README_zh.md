@@ -1,8 +1,17 @@
+<div align="center">
+
 # tmux-shot
 
-将终端文本渲染为 PNG 截图，完整保留 ANSI 颜色。专为需要分享长篇终端输出的 tmux 用户打造。
+将终端文本渲染为 PNG 截图，完整保留 ANSI 颜色。
+专为需要分享长篇终端输出的 tmux 用户打造。
 
-> English version: [README.md](README.md)
+[English](./README.md) | **简体中文**
+
+[![PyPI version](https://img.shields.io/pypi/v/tmux-shot)](https://pypi.org/project/tmux-shot/)
+[![Python versions](https://img.shields.io/pypi/pyversions/tmux-shot)](https://pypi.org/project/tmux-shot/)
+[![License](https://img.shields.io/github/license/Async23/tmux-shot)](https://github.com/Async23/tmux-shot/blob/main/LICENSE)
+
+</div>
 
 ## 功能特性
 
