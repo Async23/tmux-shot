@@ -83,14 +83,19 @@ def _render_line(
         cell = cells[i]
 
         if cell.display_width == 1:
-            # Batch consecutive ASCII cells with the same style
+            # Batch consecutive narrow cells with the same style,
+            # but only if they all use the same font (no fallback needed)
             run_text = cell.char
+            base_font = fonts.select_for_char(cell.char, cell.style.bold, cell.style.italic)
             j = i + 1
             while (
                 j < len(cells)
                 and cells[j].display_width == 1
                 and cells[j].style == cell.style
             ):
+                next_font = fonts.select_for_char(cells[j].char, cell.style.bold, cell.style.italic)
+                if next_font is not base_font:
+                    break
                 run_text += cells[j].char
                 j += 1
 
@@ -100,8 +105,7 @@ def _render_line(
             if bg is not None:
                 draw.rectangle([x, y, x + w, y + line_step], fill=bg)
 
-            font = fonts.select(cell.style.bold, cell.style.italic)
-            draw.text((x, y), run_text, font=font, fill=fg)
+            draw.text((x, y), run_text, font=base_font, fill=fg)
 
             _draw_decorations(draw, cell.style, x, y, w, ascent, fg)
 

@@ -1,12 +1,12 @@
-"""Font loading and CJK fallback."""
+"""Font loading with CJK and symbol fallback."""
 
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from PIL import ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 # Default monospace font candidates
 _DEFAULT_FONTS = [
@@ -54,6 +54,18 @@ _CJK_FONTS_LINUX = [
     "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
 ]
 
+# Symbol fallback fonts for characters not in primary or CJK fonts
+_SYMBOL_FONTS_MACOS = [
+    "/System/Library/Fonts/Supplemental/STIXTwoMath.otf",
+    "/System/Library/Fonts/Apple Symbols.ttf",
+    "/System/Library/Fonts/Supplemental/Apple Symbols.ttf",
+]
+
+_SYMBOL_FONTS_LINUX = [
+    "/usr/share/fonts/opentype/stix/STIXTwoMath.otf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+]
+
 
 @dataclass
 class FontSet:
@@ -64,6 +76,9 @@ class FontSet:
     italic: ImageFont.FreeTypeFont | None = None
     bold_italic: ImageFont.FreeTypeFont | None = None
     cjk: ImageFont.FreeTypeFont | None = None
+    symbol: ImageFont.FreeTypeFont | None = None
+    _glyph_cache: dict[str, bool] = field(default_factory=dict, repr=False)
+    _tofu_hash: int | None = field(default=None, repr=False)
 
     def select(self, is_bold: bool, is_italic: bool) -> ImageFont.FreeTypeFont:
         """Select the appropriate font variant for the given style."""
@@ -74,6 +89,38 @@ class FontSet:
         if is_italic and self.italic is not None:
             return self.italic
         return self.primary
+
+    def select_for_char(self, char: str, is_bold: bool, is_italic: bool) -> ImageFont.FreeTypeFont:
+        """Select font for a specific character, with fallback for missing glyphs."""
+        # ASCII is always in primary
+        if ord(char) < 0x80:
+            return self.select(is_bold, is_italic)
+
+        font = self.select(is_bold, is_italic)
+        if self.symbol is not None and not self._has_glyph(font, char):
+            return self.symbol
+        return font
+
+    def _has_glyph(self, font: ImageFont.FreeTypeFont, char: str) -> bool:
+        """Check if font has a real glyph (not tofu) for the character."""
+        cache_key = f"{id(font)}:{char}"
+        if cache_key in self._glyph_cache:
+            return self._glyph_cache[cache_key]
+
+        if self._tofu_hash is None:
+            self._tofu_hash = self._render_hash(font, "\U000FFFFF")
+
+        result = self._render_hash(font, char) != self._tofu_hash
+        self._glyph_cache[cache_key] = result
+        return result
+
+    @staticmethod
+    def _render_hash(font: ImageFont.FreeTypeFont, char: str) -> int:
+        """Render a character and return a hash of the bitmap."""
+        img = Image.new("L", (40, 40), 0)
+        draw = ImageDraw.Draw(img)
+        draw.text((4, 4), char, font=font, fill=255)
+        return hash(img.tobytes())
 
 
 def load_fonts(font_path: str | None, font_size: int) -> FontSet:
@@ -91,12 +138,14 @@ def load_fonts(font_path: str | None, font_size: int) -> FontSet:
     italic = _load_variant(resolved_path, font_size, "italic")
     bold_italic = _load_variant(resolved_path, font_size, "bold_italic")
     cjk = _load_cjk(font_size)
+    symbol = _load_symbol(font_size)
     return FontSet(
         primary=primary,
         bold=bold,
         italic=italic,
         bold_italic=bold_italic,
         cjk=cjk,
+        symbol=symbol,
     )
 
 
@@ -152,6 +201,17 @@ def _load_variant(
 def _load_cjk(size: int) -> ImageFont.FreeTypeFont | None:
     """Load a CJK fallback font."""
     candidates = _CJK_FONTS_MACOS if sys.platform == "darwin" else _CJK_FONTS_LINUX
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size, index=0)
+        except OSError:
+            continue
+    return None
+
+
+def _load_symbol(size: int) -> ImageFont.FreeTypeFont | None:
+    """Load a symbol fallback font for characters missing from primary."""
+    candidates = _SYMBOL_FONTS_MACOS if sys.platform == "darwin" else _SYMBOL_FONTS_LINUX
     for path in candidates:
         try:
             return ImageFont.truetype(path, size, index=0)
