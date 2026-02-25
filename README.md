@@ -1,81 +1,202 @@
 # tmux-shot
 
-将 tmux 中选中的终端文本渲染为 PNG 截图，忠实还原终端字体和配色。
+Render terminal text to beautiful PNG screenshots with full ANSI color support. Built for tmux users who need to share long terminal output as a single image.
 
-解决的问题：在 tmux 中与 AI 对话时，长内容需要截多张图拼接才能分享——tmux-shot 让你选中内容后一键生成完整长图。
+## Features
 
-## 特性
+- **ANSI Color Rendering** -- Faithfully renders 8/16/256/truecolor ANSI escape sequences including bold, dim, italic, underline, strikethrough, and reverse
+- **CJK Support** -- Correct double-width character alignment with automatic CJK font fallback
+- **Retina / HiDPI** -- Default 2x rendering; macOS Preview displays at correct logical size
+- **Themes** -- Built-in One Half Dark and One Half Light color schemes, with `--bg`/`--fg` overrides
+- **tmux Integration** -- One-key screenshot via `copy-pipe` binding in tmux copy-mode
+- **Flexible Input** -- Reads from stdin pipe or system clipboard automatically
+- **Clipboard Output** -- Copy the rendered PNG directly to the system clipboard
+- **Config File** -- Persistent preferences via `~/.config/tmux-shot/config.toml`
+- **Cross-Platform** -- macOS (primary) and Linux support
 
-- **终端风格渲染**：使用等宽字体 + 终端配色，输出接近终端实际显示效果
-- **CJK 支持**：中英文混排正确对齐，CJK 字符占双格子宽度
-- **Retina 2x**：默认生成高清图片，macOS 预览自动按 Retina 缩放
-- **暗色/亮色主题**：内置 One Half Dark / Light 配色，也可自定义
-- **tmux 集成**：配合 copy-mode 按键绑定，选中即出图
-- **灵活输入**：管道 stdin / 系统剪贴板自动检测
+## Installation
 
-## 依赖
-
-- Python 3.10+
-- [Pillow](https://pillow.readthedocs.io/)
-- macOS（使用 `pbpaste`、`osascript`、系统 CJK 字体）
-
-## 安装
+**Requires Python 3.10+ and [Pillow](https://pillow.readthedocs.io/).**
 
 ```bash
-# 安装依赖
-pip install Pillow
+# From PyPI
+pip install tmux-shot
 
-# 复制到 PATH
-cp tmux-shot ~/.local/bin/
-chmod +x ~/.local/bin/tmux-shot
+# Or with pipx (isolated environment)
+pipx install tmux-shot
+
+# From source
+git clone https://github.com/<user>/tmux-shot.git
+cd tmux-shot
+pip install -e .
 ```
 
-## 用法
+## Quick Start
 
 ```bash
-# 从剪贴板生成截图
+# Screenshot from clipboard, open in Preview
 tmux-shot --open
 
-# 管道输入
-pbpaste | tmux-shot --open
+# Pipe any command output
+ls --color=always | tmux-shot --open
 
-# 亮色主题
-tmux-shot --light --open
-
-# 自定义输出路径
-tmux-shot -o /tmp/my-screenshot.png
-
-# 同时复制图片到系统剪贴板
-tmux-shot --clipboard
+# Light theme + copy to clipboard
+echo "hello world" | tmux-shot --light --clipboard
 ```
 
-### tmux 集成
+## tmux Integration
 
-在 `~/.tmux.conf` 中添加：
+Add to `~/.tmux.conf`:
 
 ```tmux
-# Y = 复制到剪贴板 + 生成截图并打开
-bind -T copy-mode-vi Y send-keys -X copy-pipe-and-cancel "pbcopy && pbpaste | tmux-shot --open"
+# Press Y in copy-mode to screenshot the selection and open it
+bind -T copy-mode-vi Y send-keys -X copy-pipe-and-cancel "tmux-shot --open --clipboard"
 ```
 
-重载配置后，在 copy-mode 中选中内容按 `Y` 即可。
+Reload tmux config (`tmux source ~/.tmux.conf`), then:
 
-## 参数
+1. Enter copy-mode: `prefix + [`
+2. Select text with `v` and movement keys
+3. Press `Y` -- a PNG screenshot is generated, copied to clipboard, and opened in Preview
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `-o, --output` | `/tmp/tmux-shot-<时间戳>.png` | 输出路径 |
-| `--font` | DejaVuSansM Nerd Font Mono | 字体文件路径 |
-| `--font-size` | 16 | 字体大小（逻辑像素） |
-| `--padding` | 20 | 内边距（逻辑像素） |
-| `--line-height` | 1.35 | 行高倍数 |
-| `--scale` | 2 | 渲染倍率（Retina 用 2） |
-| `--bg` | `#282c34` | 背景色 |
-| `--fg` | `#dcdfe4` | 前景色 |
-| `--light` | - | 使用亮色主题 |
-| `--open` | - | 生成后用预览打开 |
-| `--clipboard` | - | 复制图片到系统剪贴板 |
+### Capture Current Pane
+
+```bash
+# Capture visible pane content
+tmux capture-pane -p -e | tmux-shot --open
+
+# Capture with scrollback (last 500 lines)
+tmux capture-pane -p -e -S -500 | tmux-shot --open
+```
+
+> **Note:** Use `-e` flag with `tmux capture-pane` to preserve ANSI escape sequences.
+
+## CLI Reference
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o, --output PATH` | `/tmp/tmux-shot-<timestamp>.png` | Output file path |
+| `--theme NAME` | `one-half-dark` | Color theme (`one-half-dark`, `one-half-light`) |
+| `--light` | | Shortcut for `--theme one-half-light` |
+| `--font PATH` | Auto-detected | Path to a monospace `.ttf`/`.otf` font file |
+| `--font-size N` | `16` | Font size in logical pixels |
+| `--padding N` | `20` | Image padding in logical pixels |
+| `--line-height F` | `1.35` | Line height multiplier |
+| `--scale N` | `2` | HiDPI scale factor (2 = Retina) |
+| `--bg COLOR` | Theme default | Override background color (`#rrggbb`) |
+| `--fg COLOR` | Theme default | Override foreground color (`#rrggbb`) |
+| `--open` | `false` | Open image in default viewer after rendering |
+| `--clipboard` | `false` | Copy image to system clipboard |
+| `--version` | | Show version and exit |
+
+## Configuration
+
+Create `~/.config/tmux-shot/config.toml` for persistent preferences:
+
+```toml
+[general]
+theme = "one-half-dark"
+scale = 2
+open = true               # always open after rendering
+
+[font]
+family = "DejaVuSansM Nerd Font Mono"  # path or font name
+size = 16
+line_height = 1.35
+
+[layout]
+padding = 20
+tab_width = 8
+
+[output]
+directory = "/tmp"
+clipboard = false
+```
+
+### Configuration Priority
+
+Settings are resolved in this order (highest priority first):
+
+1. **CLI arguments** -- `--font-size 14`
+2. **Environment variables** -- `TMUX_SHOT_FONT_SIZE=14`
+3. **Config file** -- `~/.config/tmux-shot/config.toml`
+4. **Built-in defaults**
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `TMUX_SHOT_THEME` | Color theme name |
+| `TMUX_SHOT_FONT` | Font file path |
+| `TMUX_SHOT_FONT_SIZE` | Font size |
+| `TMUX_SHOT_PADDING` | Padding |
+| `TMUX_SHOT_SCALE` | Scale factor |
+| `TMUX_SHOT_OUTPUT_DIR` | Output directory |
+
+## Comparison with Similar Tools
+
+| Feature | tmux-shot | [freeze](https://github.com/charmbracelet/freeze) | [silicon](https://github.com/Aloxaf/silicon) | [termshot](https://github.com/homeport/termshot) | [carbon](https://carbon.now.sh/) |
+|---------|:---------:|:-----:|:-------:|:--------:|:------:|
+| ANSI color parsing | Yes | Yes | No | Yes | No |
+| Syntax highlighting | No | Yes | Yes | No | Yes |
+| tmux integration | Native | Manual | No | No | No |
+| Clipboard in + out | Yes | No | Partial | No | No |
+| CJK support | Yes | Partial | Yes | Unknown | Yes |
+| Config file | Yes | Yes | Yes | No | N/A |
+| PNG output | Yes | Yes | Yes | Yes | Yes |
+| SVG output | No | Yes | No | No | Yes |
+| Offline | Yes | Yes | Yes | Yes | No |
+| Install | pip | brew/go | cargo | brew/go | Web |
+
+**tmux-shot** focuses on a niche the others don't cover well:
+
+- **tmux-native**: purpose-built `copy-pipe` workflow -- select and press one key
+- **ANSI + clipboard**: parses real terminal escape sequences AND supports clipboard I/O
+- **CJK-first**: double-width character alignment is a first-class feature
+- **Zero config**: works immediately with `pip install`, no Go/Rust toolchain needed
+
+## Architecture
+
+tmux-shot is structured as a modular Python package:
+
+```
+tmux_shot/
+    cli.py        # CLI entry point and argument parsing
+    config.py     # Config file, env vars, and defaults
+    input.py      # Text acquisition (stdin / clipboard)
+    ansi.py       # ANSI SGR escape sequence parser
+    layout.py     # Character cell layout engine
+    fonts.py      # Font loading with CJK fallback
+    renderer.py   # Pillow-based image rendering
+    themes.py     # Color scheme definitions
+    output.py     # File save, clipboard copy, preview
+```
+
+See [docs/DESIGN.md](docs/DESIGN.md) for the full architecture and rendering pipeline documentation.
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes
+4. Run linting and tests:
+   ```bash
+   ruff check .
+   ruff format --check .
+   pytest
+   ```
+5. Submit a pull request
+
+### Development Setup
+
+```bash
+git clone https://github.com/<user>/tmux-shot.git
+cd tmux-shot
+pip install -e ".[toml]"
+```
 
 ## License
 
-MIT
+[MIT](LICENSE)
