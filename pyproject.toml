@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tmux-shot"
+version = "0.2.0"
+description = "Render terminal text to PNG screenshots with ANSI color support"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+toml = ["tomli>=2.0; python_version < '3.11'"]
+
+[project.scripts]
+tmux-shot = "tmux_shot.cli:main"
