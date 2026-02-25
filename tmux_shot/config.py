@@ -28,7 +28,7 @@ class Config:
     font: str | None = None
     font_size: int = 16
     padding: int = 20
-    line_height: float = 1.35
+    line_height: float = 1.0
     scale: int = 2
     tab_width: int = 8
     output_dir: str = "/tmp"
