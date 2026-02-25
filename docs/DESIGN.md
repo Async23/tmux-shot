@@ -14,7 +14,7 @@ graph TD
     layout["layout.py\n(line/cell layout engine)"]
     renderer["renderer.py\n(Pillow image rendering)"]
     themes["themes.py\n(color scheme definitions)"]
-    fonts["fonts.py\n(font loading & fallback)"]
+    fonts["fonts.py\n(font loading, CJK + symbol fallback)"]
     output["output.py\n(file write, clipboard, open)"]
     config["config.py\n(config file + env loading)"]
 
@@ -42,7 +42,7 @@ tmux_shot/
     input.py             # stdin / clipboard text acquisition
     ansi.py              # ANSI SGR escape sequence parser
     layout.py            # text layout: lines, cells, dimensions
-    fonts.py             # font loading, CJK fallback
+    fonts.py             # font loading, CJK + symbol fallback
     renderer.py          # Pillow-based image rendering
     themes.py            # built-in color schemes
     output.py            # file save, clipboard copy, open preview
@@ -178,7 +178,7 @@ Renders the layout into a Pillow `Image` object.
 For each LayoutLine:
     For each Cell in line:
         1. If cell has background color → draw filled rectangle
-        2. Select font (primary or CJK fallback based on display_width)
+        2. Select font via select_for_char() (primary, style variant, or symbol fallback)
         3. Calculate x position = padding + cell_offset * cell_width
         4. For CJK chars: center within double-width cell
         5. Draw text with the cell's foreground color
@@ -186,9 +186,9 @@ For each LayoutLine:
 ```
 
 **Optimizations:**
-- **Batch ASCII runs**: consecutive ASCII characters with the same style are drawn in a single `draw.text()` call instead of character-by-character
+- **Batch narrow runs**: consecutive narrow (width=1) characters with the same style AND same font are drawn in a single `draw.text()` call. The batch breaks when the font changes (e.g. primary → symbol fallback)
 - **Skip empty lines**: lines with no content only advance the y cursor
-- **Lazy font loading**: CJK font is only loaded when a wide character is encountered
+- **Lazy font loading**: CJK and symbol fonts are loaded once at startup and cached
 
 ### Stage 5: Output (`output.py`)
 
@@ -291,6 +291,31 @@ When a character has `display_width == 2`, the renderer tries CJK fonts in order
 
 The CJK font is loaded once and cached for the duration of the render.
 
+### Symbol Fallback
+
+For Unicode symbols not covered by the primary font or CJK font (e.g. `U+23FA` BLACK CIRCLE FOR RECORD, `U+23BF`, `U+273B`), the renderer uses a **bitmap-hash tofu detection** mechanism:
+
+1. Render the character with the primary font
+2. Render a known-missing character (`U+FFFFF`) with the same font as a "tofu reference"
+3. Compare bitmap hashes -- if identical, the character is tofu (missing glyph)
+4. Fall back to the symbol font if tofu is detected
+
+**Symbol font candidates:**
+
+**macOS:**
+1. `STIXTwoMath.otf`
+2. `Apple Symbols.ttf`
+
+**Linux:**
+1. `STIXTwoMath.otf`
+2. `DejaVu Sans.ttf`
+
+**Implementation (`FontSet.select_for_char()`):**
+- ASCII characters (`< 0x80`) always use the primary font (no fallback check)
+- Non-ASCII characters are checked against the primary font using `_has_glyph()`
+- Results are cached per `(font_id, char)` pair for performance
+- The tofu reference hash is computed once per font and reused
+
 ### CJK Alignment
 
 CJK characters are rendered centered within a double-width cell:
@@ -328,7 +353,7 @@ open = true                # always open after render
 [font]
 family = "DejaVuSansM Nerd Font Mono"
 size = 16
-line_height = 1.35
+line_height = 1.0
 
 [layout]
 padding = 20
@@ -366,30 +391,41 @@ All config keys can be set via environment variables with the `TMUX_SHOT_` prefi
 
 ## Terminal Integration
 
-### tmux copy-pipe (Primary)
+### tmux capture-pane Integration (Primary)
+
+The primary tmux integration uses `capture-pane -e` to preserve ANSI escape sequences. A helper script `tmux-shot-capture` translates copy-mode selection coordinates into capture-pane line ranges.
 
 ```tmux
 # ~/.tmux.conf
 
-# Y in copy-mode: copy selection + generate screenshot + open
-bind -T copy-mode-vi Y send-keys -X copy-pipe-and-cancel \
-    "tmux-shot --open --clipboard"
+# Y in copy-mode: screenshot selection (preserving ANSI) + copy to clipboard
+bind -T copy-mode-vi Y if-shell -F '#{selection_present}' \
+  'run-shell -b "tmux-shot-capture #{selection_start_y} #{selection_end_y} #{history_size} --open --clipboard" ; \
+   send-keys -X copy-pipe-and-cancel "pbcopy"' \
+  'display-message "No selection"'
 ```
 
 How it works:
 1. User enters tmux copy-mode and selects text
-2. Pressing `Y` sends the selected text to tmux-shot's stdin via `copy-pipe`
-3. tmux-shot reads stdin, renders PNG, optionally copies to clipboard and opens preview
-4. tmux exits copy-mode (`-and-cancel`)
+2. Pressing `Y` triggers the binding -- tmux expands format variables while selection exists
+3. `run-shell -b` launches `tmux-shot-capture` in the background (non-blocking)
+4. `tmux-shot-capture` converts selection coordinates: `capture_line = selection_y - history_size`
+5. `tmux capture-pane -e -p -S <start> -E <end>` captures content with ANSI codes preserved
+6. Output is piped to `tmux-shot` for rendering
+7. `copy-pipe-and-cancel` copies the plain text to clipboard and exits copy-mode
 
-### tmux capture-pane (P1)
+> **Why not `copy-pipe` alone?** `copy-pipe` sends plain text only, stripping all ANSI escape sequences. By using `capture-pane -e`, we preserve colors, bold, italic, and all terminal formatting.
+
+> **Why `run-shell -b` before `copy-pipe-and-cancel`?** Format variables like `#{selection_start_y}` are expanded when tmux processes each command in the `;` chain. If `copy-pipe-and-cancel` runs first, it clears the selection -- making the format variables empty for subsequent commands. Placing `run-shell -b` first ensures the variables are captured while the selection still exists.
+
+### Direct capture-pane
 
 ```bash
 # Capture the entire visible pane
-tmux capture-pane -p | tmux-shot --open
+tmux capture-pane -p -e | tmux-shot --open
 
 # Capture with scrollback (last 500 lines)
-tmux capture-pane -p -S -500 | tmux-shot --open
+tmux capture-pane -p -e -S -500 | tmux-shot --open
 ```
 
 ### Other Terminals
@@ -439,7 +475,7 @@ pip install tmux-shot
 pipx install tmux-shot
 
 # From source
-git clone https://github.com/<user>/tmux-shot
+git clone https://github.com/Async23/tmux-shot
 cd tmux-shot
 pip install -e .
 

@@ -54,7 +54,7 @@ tmux-shot solves this with a single command: select text in tmux copy-mode, pres
 | F-03 | **PNG output** | Render to PNG with configurable DPI/scale (default 2x for Retina) |
 | F-04 | **CJK support** | Correct double-width character rendering with font fallback |
 | F-05 | **Built-in themes** | At least dark and light themes with sensible defaults (One Half Dark/Light) |
-| F-06 | **tmux integration** | Document and support `copy-pipe` binding for one-key workflow |
+| F-06 | **tmux integration** | One-key screenshot via `capture-pane -e` binding in tmux copy-mode, preserving ANSI colors |
 | F-07 | **CLI arguments** | `--output`, `--theme`, `--font`, `--font-size`, `--padding`, `--scale`, `--open`, `--clipboard` |
 | F-08 | **Clipboard output** | Copy resulting PNG to system clipboard (macOS `osascript`) |
 | F-09 | **Auto-open preview** | Option to open the generated image with the default viewer |
@@ -76,7 +76,7 @@ tmux-shot solves this with a single command: select text in tmux copy-mode, pres
 
 | ID | Feature | Description |
 |----|---------|-------------|
-| F-18 | **Nerd Font icon rendering** | Render Nerd Font / Powerline glyphs correctly |
+| F-18 | **Symbol font fallback** | Render Unicode symbols missing from primary font via bitmap-hash tofu detection and fallback fonts (STIXTwoMath, Apple Symbols). *Implemented in v0.3.0.* |
 | F-19 | **WebP output** | Support WebP as output format |
 | F-20 | **Interactive mode** | TUI for adjusting theme/padding and previewing the result |
 | F-21 | **Linux / Wayland clipboard** | Support `xclip`, `xsel`, `wl-copy` for Linux |
