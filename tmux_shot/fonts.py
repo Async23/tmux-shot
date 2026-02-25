@@ -15,6 +15,31 @@ _DEFAULT_FONTS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
 ]
 
+# Mapping from regular font filename to variant suffixes
+_VARIANT_MAP = {
+    "bold": [
+        ("Regular", "Bold"),
+        ("regular", "bold"),
+        ("-Regular.", "-Bold."),
+    ],
+    "italic": [
+        ("Regular", "Oblique"),
+        ("regular", "oblique"),
+        ("-Regular.", "-Oblique."),
+        ("Regular", "Italic"),
+        ("regular", "italic"),
+        ("-Regular.", "-Italic."),
+    ],
+    "bold_italic": [
+        ("Regular", "BoldOblique"),
+        ("regular", "boldoblique"),
+        ("-Regular.", "-BoldOblique."),
+        ("Regular", "BoldItalic"),
+        ("regular", "bolditalic"),
+        ("-Regular.", "-BoldItalic."),
+    ],
+}
+
 # CJK font candidates per platform
 _CJK_FONTS_MACOS = [
     "/System/Library/Fonts/Hiragino Sans GB.ttc",
@@ -32,32 +57,60 @@ _CJK_FONTS_LINUX = [
 
 @dataclass
 class FontSet:
-    """Loaded font set with optional CJK fallback."""
+    """Loaded font set with optional CJK fallback and style variants."""
 
     primary: ImageFont.FreeTypeFont
+    bold: ImageFont.FreeTypeFont | None = None
+    italic: ImageFont.FreeTypeFont | None = None
+    bold_italic: ImageFont.FreeTypeFont | None = None
     cjk: ImageFont.FreeTypeFont | None = None
+
+    def select(self, is_bold: bool, is_italic: bool) -> ImageFont.FreeTypeFont:
+        """Select the appropriate font variant for the given style."""
+        if is_bold and is_italic and self.bold_italic is not None:
+            return self.bold_italic
+        if is_bold and self.bold is not None:
+            return self.bold
+        if is_italic and self.italic is not None:
+            return self.italic
+        return self.primary
 
 
 def load_fonts(font_path: str | None, font_size: int) -> FontSet:
-    """Load primary font and CJK fallback.
+    """Load primary font, style variants, and CJK fallback.
 
     Args:
         font_path: Explicit font path, or None to use defaults.
         font_size: Font size in pixels (already scaled for HiDPI).
 
     Returns:
-        FontSet with primary and optional CJK fonts.
+        FontSet with primary, bold, italic, bold_italic, and optional CJK fonts.
     """
-    primary = _load_primary(font_path, font_size)
+    primary, resolved_path = _load_primary(font_path, font_size)
+    bold = _load_variant(resolved_path, font_size, "bold")
+    italic = _load_variant(resolved_path, font_size, "italic")
+    bold_italic = _load_variant(resolved_path, font_size, "bold_italic")
     cjk = _load_cjk(font_size)
-    return FontSet(primary=primary, cjk=cjk)
+    return FontSet(
+        primary=primary,
+        bold=bold,
+        italic=italic,
+        bold_italic=bold_italic,
+        cjk=cjk,
+    )
 
 
-def _load_primary(font_path: str | None, size: int) -> ImageFont.FreeTypeFont:
-    """Load the primary monospace font."""
+def _load_primary(
+    font_path: str | None, size: int
+) -> tuple[ImageFont.FreeTypeFont, str | None]:
+    """Load the primary monospace font.
+
+    Returns (font, resolved_path) where resolved_path is the actual file path
+    used, or None if the default bitmap font was loaded.
+    """
     if font_path:
         try:
-            return ImageFont.truetype(font_path, size)
+            return ImageFont.truetype(font_path, size), font_path
         except OSError:
             print(
                 f"tmux-shot: warning: font not found: {font_path}",
@@ -66,7 +119,7 @@ def _load_primary(font_path: str | None, size: int) -> ImageFont.FreeTypeFont:
 
     for path in _DEFAULT_FONTS:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(path, size), path
         except OSError:
             continue
 
@@ -74,7 +127,26 @@ def _load_primary(font_path: str | None, size: int) -> ImageFont.FreeTypeFont:
         "tmux-shot: warning: no monospace font found, using default",
         file=sys.stderr,
     )
-    return ImageFont.load_default()
+    return ImageFont.load_default(), None
+
+
+def _load_variant(
+    primary_path: str | None, size: int, variant: str
+) -> ImageFont.FreeTypeFont | None:
+    """Try to load a font variant (bold/italic/bold_italic) by deriving
+    the path from the primary font path."""
+    if primary_path is None:
+        return None
+
+    for old, new in _VARIANT_MAP[variant]:
+        if old in primary_path:
+            candidate = primary_path.replace(old, new)
+            try:
+                return ImageFont.truetype(candidate, size)
+            except OSError:
+                continue
+
+    return None
 
 
 def _load_cjk(size: int) -> ImageFont.FreeTypeFont | None:

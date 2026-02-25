@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from tmux_shot.ansi import Style
 from tmux_shot.fonts import FontSet
@@ -32,14 +32,11 @@ def render(
     Returns:
         Rendered PIL Image.
     """
-    primary = fonts.primary
-    cjk = fonts.cjk
-
     # Cell width = width of a single ASCII character
-    cell_w = primary.getlength("M")
+    cell_w = fonts.primary.getlength("M")
 
     # Line step height
-    ascent, descent = primary.getmetrics()
+    ascent, descent = fonts.primary.getmetrics()
     line_step = int((ascent + descent) * line_height)
 
     # Canvas dimensions
@@ -60,7 +57,7 @@ def render(
             continue
         _render_line(
             draw, line.cells, y, padding, cell_w, line_step,
-            theme, primary, cjk, ascent,
+            theme, fonts, ascent,
         )
         y += line_step
 
@@ -75,8 +72,7 @@ def _render_line(
     cell_w: float,
     line_step: int,
     theme: Theme,
-    primary: ImageFont.FreeTypeFont,
-    cjk: ImageFont.FreeTypeFont | None,
+    fonts: FontSet,
     ascent: int,
 ) -> None:
     """Render cells for a single line, batching same-style ASCII runs."""
@@ -104,10 +100,8 @@ def _render_line(
             if bg is not None:
                 draw.rectangle([x, y, x + w, y + line_step], fill=bg)
 
-            draw.text((x, y), run_text, font=primary, fill=fg)
-
-            if cell.style.bold:
-                draw.text((x + 1, y), run_text, font=primary, fill=fg)
+            font = fonts.select(cell.style.bold, cell.style.italic)
+            draw.text((x, y), run_text, font=font, fill=fg)
 
             _draw_decorations(draw, cell.style, x, y, w, ascent, fg)
 
@@ -121,13 +115,10 @@ def _render_line(
             if bg is not None:
                 draw.rectangle([x, y, x + w, y + line_step], fill=bg)
 
-            font = cjk if cjk is not None else primary
+            font = fonts.cjk if fonts.cjk is not None else fonts.primary
             glyph_w = font.getlength(cell.char)
             offset = (w - glyph_w) / 2
             draw.text((x + offset, y), cell.char, font=font, fill=fg)
-
-            if cell.style.bold:
-                draw.text((x + offset + 1, y), cell.char, font=font, fill=fg)
 
             _draw_decorations(draw, cell.style, x, y, w, ascent, fg)
 

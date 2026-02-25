@@ -1,0 +1,35 @@
+#!/bin/bash
+# tmux-shot-capture: Capture tmux pane content with ANSI colors and render to PNG.
+#
+# Usage (called from tmux copy-mode-vi Y binding):
+#   tmux-shot-capture <selection_start_y> <selection_end_y> <history_size> [tmux-shot args...]
+#
+# The coordinates from tmux are absolute (0 = top of scrollback).
+# capture-pane uses negative offsets from the current cursor:
+#   capture_line = selection_y - history_size
+
+set -euo pipefail
+
+if [ $# -lt 3 ]; then
+    echo "Usage: tmux-shot-capture <sel_start_y> <sel_end_y> <history_size> [tmux-shot args...]" >&2
+    exit 1
+fi
+
+sel_start_y="$1"
+sel_end_y="$2"
+history_size="$3"
+shift 3
+
+# Handle reverse selection (start > end)
+if [ "$sel_start_y" -gt "$sel_end_y" ]; then
+    tmp="$sel_start_y"
+    sel_start_y="$sel_end_y"
+    sel_end_y="$tmp"
+fi
+
+# Convert to capture-pane line numbers (negative = scrollback, 0+ = visible)
+start_line=$((sel_start_y - history_size))
+end_line=$((sel_end_y - history_size))
+
+# Capture with ANSI escape sequences preserved (-e) and print to stdout (-p)
+tmux capture-pane -e -p -S "$start_line" -E "$end_line" | tmux-shot "$@"
